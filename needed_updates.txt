@@ -1,0 +1,16 @@
+FINVIZ NEWS Scanner
+
+I want to update the FinViz New Scanner and convert it to a Electron App.
+
+Current
+1.  ALerts.html
+2.  finviz_news_scanner.py
+
+Mandatory UPdates 
+1.  Use Alpaca for price Updates
+2.  On new refreshes, look at prices and see it they are responding (Up / Down)
+3.  Possible show the % of increase.
+
+
+Wanted Changes - Updates
+1.  Convert to a Electron App

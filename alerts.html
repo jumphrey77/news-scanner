@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en" class="theme-dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Finviz News Scanner — Alerts</title>
+  <style>
+    /* ── Theme variables ─────────────────────────────────────────────────── */
+    .theme-dark {
+      --bg:               #0b1220;
+      --text:             #e5e7eb;
+      --muted:            rgba(229, 231, 235, 0.7);
+      --border:           rgba(148, 163, 184, 0.25);
+      --card-bg:          rgba(2, 6, 23, 0.85);
+      --card-border:      rgba(148, 163, 184, 0.25);
+      --shadow:           0 10px 30px rgba(0,0,0,0.35);
+      --card-new-bg:      rgba(255, 165, 0, 0.10);
+      --card-new-border:  #ffa500;
+      --card-new-glow:    0 0 0 3px rgba(255,165,0,0.20);
+      --accent:           #4ade80;   /* brighter green — readable on dark bg */
+      --warning:          #ffa500;
+      --link:             #60a5fa;
+      --input-bg:         rgba(255,255,255,0.06);
+      --input-border:     rgba(148,163,184,0.3);
+      --popup-bg:         #0f1a2e;
+      --popup-border:     rgba(148,163,184,0.3);
+    }
+    .theme-light {
+      --bg:               #f7f7fb;
+      --text:             #111827;
+      --muted:            rgba(17, 24, 39, 0.65);
+      --border:           rgba(17, 24, 39, 0.18);
+      --card-bg:          #ffffff;
+      --card-border:      rgba(17, 24, 39, 0.18);
+      --shadow:           0 10px 30px rgba(0,0,0,0.12);
+      --card-new-bg:      #fffae6;
+      --card-new-border:  #f59e0b;
+      --card-new-glow:    0 0 0 3px rgba(245,158,11,0.20);
+      --accent:           #16a34a;
+      --warning:          #f59e0b;
+      --link:             #2563eb;
+      --input-bg:         rgba(0,0,0,0.04);
+      --input-border:     rgba(17,24,39,0.2);
+      --popup-bg:         #ffffff;
+      --popup-border:     rgba(17,24,39,0.2);
+    }
+    :root {
+      --high:    #ef4444;
+      --watch:   #d946ef;
+      --price:   #ffa500;
+      --keyword: #4ade80;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Courier New', 'Consolas', monospace;
+      font-size: 13px;
+      min-height: 100vh;
+    }
+    a { color: var(--link); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .page { max-width: 1600px; margin: 0 auto; padding: 16px; }
+
+    /* ── Header ──────────────────────────────────────────────────────────── */
+    .header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .title { font-size: 18px; font-weight: 800; letter-spacing: 0.05em; }
+    .title span { color: var(--accent); }
+    .meta {
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .meta .dot::before { content: "● "; color: var(--accent); }
+    /* Fixed-width so countdown doesn't shift other elements */
+    .countdown-inline {
+      display: inline-block;
+      min-width: 100px;
+      font-variant-numeric: tabular-nums;
+    }
+    .refresh-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .refresh-badge .spinner {
+      width: 8px; height: 8px;
+      border: 1.5px solid var(--muted);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .refresh-badge.loading .spinner { animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Controls ────────────────────────────────────────────────────────── */
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+      position: relative;
+    }
+    .filter-btn {
+      padding: 3px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--input-bg);
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 11px;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .filter-btn.active                { color: var(--text); border-color: currentColor; }
+    .filter-btn.active.f-high         { color: var(--high);    border-color: var(--high); }
+    .filter-btn.active.f-watch        { color: var(--watch);   border-color: var(--watch); }
+    .filter-btn.active.f-price        { color: var(--price);   border-color: var(--price); }
+    .filter-btn.active.f-keyword      { color: var(--keyword); border-color: var(--keyword); }
+    .spacer { flex: 1; }
+    .ctrl-btn {
+      padding: 3px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--input-bg);
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 11px;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .ctrl-btn:hover { color: var(--text); border-color: var(--text); }
+    .ctrl-btn.active { color: var(--accent); border-color: var(--accent); }
+    .count-label { font-size: 11px; color: var(--muted); }
+
+    /* active advanced filter pills — same size as kw-pill */
+    .adv-pill {
+      display: inline-block;
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(74,222,128,0.35);
+      color: var(--accent);
+      background: rgba(74,222,128,0.10);
+      cursor: pointer;
+      margin-right: 3px;
+      white-space: nowrap;
+    }
+    .adv-pill:hover { background: rgba(74,222,128,0.20); }
+
+    /* ── Filters popup ───────────────────────────────────────────────────── */
+    .filters-popup {
+      display: none;
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      z-index: 300;
+      width: 340px;
+      background: var(--popup-bg);
+      border: 1px solid var(--popup-border);
+      border-radius: 12px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.45);
+      padding: 16px;
+    }
+    .filters-popup.open { display: block; }
+    .popup-title {
+      font-size: 13px;
+      font-weight: 800;
+      margin-bottom: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .popup-close {
+      background: none; border: none;
+      color: var(--muted); cursor: pointer;
+      font-size: 16px; line-height: 1;
+      padding: 2px 6px; border-radius: 4px;
+    }
+    .popup-close:hover { color: var(--text); }
+    .popup-section { margin-bottom: 14px; }
+    .popup-label {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 6px;
+    }
+    .popup-input {
+      width: 100%; padding: 7px 10px;
+      border-radius: 6px; border: 1px solid var(--input-border);
+      background: var(--input-bg); color: var(--text);
+      font-family: inherit; font-size: 12px; outline: none;
+      transition: border-color 0.15s;
+    }
+    .popup-input:focus { border-color: var(--accent); }
+    .price-row { display: flex; gap: 8px; align-items: center; }
+    .price-row span { color: var(--muted); font-size: 11px; flex-shrink: 0; }
+    .price-row .popup-input { flex: 1; }
+    .popup-actions {
+      display: flex; gap: 8px;
+      margin-top: 14px; padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .popup-btn {
+      flex: 1; padding: 6px 12px;
+      border-radius: 6px; border: 1px solid var(--border);
+      background: var(--input-bg); color: var(--muted);
+      cursor: pointer; font-family: inherit; font-size: 11px;
+      transition: all 0.15s;
+    }
+    .popup-btn:hover { color: var(--text); border-color: var(--text); }
+    .popup-btn.primary {
+      background: rgba(34,197,94,0.12);
+      border-color: var(--accent); color: var(--accent);
+    }
+    .popup-btn.primary:hover { background: rgba(34,197,94,0.22); }
+
+    /* ── Table ───────────────────────────────────────────────────────────── */
+    .alerts-table { width: 100%; border-collapse: collapse; }
+    .alerts-table thead th {
+      text-align: left; font-size: 10px; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--muted); padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap; user-select: none;
+    }
+    .alerts-table thead th.sortable { cursor: pointer; }
+    .alerts-table thead th.sortable:hover { color: var(--text); }
+    .sort-arr { margin-left: 5px; opacity: 0.35; font-size: 11px; }
+    .sort-arr.on { opacity: 1; color: #facc15; font-weight: 900; font-size: 13px; }
+    th.sortable:hover .sort-arr { opacity: 0.75; }
+    .alerts-table tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+    }
+    .alerts-table tbody tr:hover { background: rgba(255,255,255,0.03); }
+    .alerts-table tbody tr.is-new {
+      background: var(--card-new-bg);
+      border-left: 3px solid var(--card-new-border);
+      box-shadow: var(--card-new-glow);
+      animation: fadeNew 3s ease-out forwards;
+    }
+    @keyframes fadeNew {
+      0%   { background: rgba(255,165,0,0.18); }
+      100% { background: var(--card-new-bg); }
+    }
+    .alerts-table td {
+      padding: 7px 10px; vertical-align: middle;
+      font-size: 12px; white-space: nowrap;
+    }
+    .td-time   { color: var(--muted); font-size: 11px; min-width: 110px; }
+    .td-badge  { min-width: 88px; }
+    .td-ticker { font-weight: 800; font-size: 13px; min-width: 70px; }
+    .td-price  { font-weight: 700; color: var(--warning); text-align: right; min-width: 68px; }
+    .td-hl     { max-width: 440px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; position: relative; }
+    .td-hl:hover { overflow: visible; }
+    .td-kw     { min-width: 100px; }
+    .td-linked { color: var(--muted); font-size: 11px; min-width: 100px; }
+    .td-src    { color: var(--muted); font-size: 11px; min-width: 80px; }
+    tr.row-hidden { display: none; }
+
+    /* ── Tooltip ─────────────────────────────────────────────────────────── */
+    [data-tip] { position: relative; }
+    [data-tip]::after {
+      content: attr(data-tip);
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 0;
+      background: rgba(8,12,24,0.97);
+      color: #e5e7eb;
+      padding: 7px 11px;
+      border-radius: 7px;
+      font-size: 11px;
+      white-space: normal;
+      max-width: 480px;
+      min-width: 140px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s;
+      z-index: 500;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.55);
+      border: 1px solid rgba(148,163,184,0.2);
+      word-break: break-word;
+      text-align: left;
+      line-height: 1.5;
+    }
+    [data-tip]:hover::after { opacity: 1; }
+
+    /* ── Priority badge ──────────────────────────────────────────────────── */
+    .badge {
+      display: inline-block; font-size: 10px; font-weight: 700;
+      padding: 2px 8px; border-radius: 999px;
+      border: 1px solid currentColor;
+      letter-spacing: 0.04em; white-space: nowrap;
+    }
+    .badge-HIGH    { color: var(--high); }
+    .badge-WATCH   { color: var(--watch); }
+    .badge-PRICE   { color: var(--price); }
+    .badge-KEYWORD { color: var(--keyword); }
+
+    /* ── Keyword pills ───────────────────────────────────────────────────── */
+    .kw-pill {
+      display: inline-block; font-size: 10px; padding: 1px 6px;
+      border-radius: 4px; background: rgba(34,197,94,0.12);
+      color: var(--accent); border: 1px solid rgba(34,197,94,0.25);
+      margin-right: 3px; white-space: nowrap;
+    }
+
+    /* ── Linked tickers ──────────────────────────────────────────────────── */
+    .linked-ticker {
+      display: inline-block; font-size: 10px; padding: 1px 5px;
+      border-radius: 3px; background: rgba(148,163,184,0.08);
+      border: 1px solid rgba(148,163,184,0.2);
+      color: var(--muted); margin-right: 3px;
+    }
+
+
+    /* ── Flag button ─────────────────────────────────────────────────────── */
+    .flag-btn {
+      display: inline-block;
+      font-size: 11px;
+      cursor: pointer;
+      margin-left: 4px;
+      vertical-align: middle;
+      opacity: 0.25;
+      transition: opacity 0.15s, color 0.15s;
+      user-select: none;
+      line-height: 1;
+      border: none;
+      background: none;
+      padding: 0 2px;
+      color: var(--text);
+    }
+    .flag-btn:hover          { opacity: 0.7; }
+    .flag-btn.flagged        { opacity: 1; color: #f59e0b; }
+    .flag-btn.flagged:hover  { opacity: 0.8; }
+    /* ── Robinhood link ──────────────────────────────────────────────────── */
+    .rh-link {
+      display: inline-block; font-size: 9px; padding: 1px 4px;
+      border-radius: 3px; background: rgba(0,200,100,0.07);
+      border: 1px solid rgba(0,200,100,0.2);
+      color: rgba(0,200,100,0.65); margin-left: 4px;
+      text-decoration: none; vertical-align: middle;
+      font-weight: 700; letter-spacing: 0.02em;
+      transition: all 0.15s; white-space: nowrap;
+    }
+    .rh-link:hover {
+      background: rgba(0,200,100,0.16);
+      color: #00e87a;
+      border-color: rgba(0,200,100,0.5);
+      text-decoration: none;
+    }
+
+    /* ── Highlight ───────────────────────────────────────────────────────── */
+    mark {
+      background: rgba(255,210,0,0.32);
+      color: inherit; border-radius: 2px; padding: 0 1px;
+    }
+
+    /* ── States ──────────────────────────────────────────────────────────── */
+    .state-msg { padding: 40px; text-align: center; color: var(--muted); font-size: 13px; }
+
+    /* ── Footer ──────────────────────────────────────────────────────────── */
+    .footer {
+      margin-top: 20px; padding-top: 10px;
+      border-top: 1px solid var(--border);
+      font-size: 11px; color: var(--muted);
+      display: flex; justify-content: space-between;
+      flex-wrap: wrap; gap: 8px;
+    }
+
+    /* ── Responsive ──────────────────────────────────────────────────────── */
+    @media (max-width: 800px) {
+      .td-src, .td-linked { display: none; }
+      .td-hl { max-width: 200px; }
+    }
+    @media (max-width: 500px) {
+      .td-kw { display: none; }
+      .td-time { min-width: 80px; font-size: 10px; }
+    }
+    /* ── Key bar ─────────────────────────────────────────────────────────── */
+    .key-bar {
+      margin-top: 14px;
+      padding: 10px 14px;
+      border-top: 1px solid var(--border);
+      border-radius: 0 0 8px 8px;
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 18px;
+      align-items: baseline;
+    }
+    .key-item { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+    .key-label {
+      font-weight: 800; font-size: 10px; letter-spacing: 0.05em;
+      padding: 2px 8px; border-radius: 999px;
+      border: 1px solid currentColor; white-space: nowrap;
+    }
+    .key-label.k-high    { color: var(--high); }
+    .key-label.k-watch   { color: var(--watch); }
+    .key-label.k-price   { color: var(--price); }
+    .key-label.k-keyword { color: var(--keyword); }
+    .key-desc { color: var(--muted); font-size: 10px; }
+    .key-val  { color: var(--text);  font-size: 10px; }
+    .key-ticker {
+      display: inline-block; font-size: 10px; padding: 1px 6px;
+      border-radius: 3px; border: 1px solid var(--watch);
+      color: var(--watch); margin-right: 3px;
+    }
+    .key-kw {
+      display: inline-block; font-size: 10px; padding: 1px 5px;
+      border-radius: 3px; background: rgba(74,222,128,0.08);
+      border: 1px solid rgba(74,222,128,0.25);
+      color: var(--keyword); margin-right: 3px; margin-bottom: 2px;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="title">FINVIZ NEWS SCANNER &mdash; <span>ALERTS</span></div>
+    <div class="meta">
+      <span class="dot" id="generated-ts">Loading...</span>
+      <span class="countdown-inline" id="countdown-inline"></span>
+      <span class="refresh-badge" id="refresh-badge">
+        <span class="spinner"></span>
+        <span id="refresh-label">Refreshing...</span>
+      </span>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button class="filter-btn active f-high"    data-filter="HIGH"    onclick="toggleFilter(this)">HIGH ★</button>
+    <button class="filter-btn active f-watch"   data-filter="WATCH"   onclick="toggleFilter(this)">WATCH</button>
+    <button class="filter-btn active f-price"   data-filter="PRICE"   onclick="toggleFilter(this)">PRICE</button>
+    <button class="filter-btn active f-keyword" data-filter="KEYWORD" onclick="toggleFilter(this)">KEYWORD</button>
+    <span id="adv-indicators"></span>
+    <span class="spacer"></span>
+    <span class="count-label" id="count-label"></span>
+    <button class="ctrl-btn" onclick="toggleTheme()">Toggle Theme</button>
+    <button class="ctrl-btn" id="filters-btn" onclick="togglePopup(event)">Filters</button>
+
+    <!-- Advanced Filters Popup -->
+    <div class="filters-popup" id="filters-popup">
+      <div class="popup-title">
+        Advanced Filters
+        <button class="popup-close" onclick="closePopup()">✕</button>
+      </div>
+
+      <div class="popup-section">
+        <div class="popup-label">Keyword / Ticker Search</div>
+        <input class="popup-input" type="text" id="adv-kw"
+               placeholder="Search ticker or headline (min 3 chars)…"
+               oninput="onAdvChange()" />
+      </div>
+
+      <div class="popup-section">
+        <div class="popup-label">Price Range</div>
+        <div class="price-row">
+          <input class="popup-input" type="number" id="adv-pmin"
+                 placeholder="Min $" min="0" step="0.01" oninput="onAdvChange()" />
+          <span>–</span>
+          <input class="popup-input" type="number" id="adv-pmax"
+                 placeholder="Max $" min="0" step="0.01" oninput="onAdvChange()" />
+        </div>
+      </div>
+
+      <div class="popup-actions">
+        <button class="popup-btn" onclick="clearAdv()">Clear All</button>
+        <button class="popup-btn primary" onclick="togglePopup()">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div id="alerts-container">
+    <div class="state-msg">Loading alerts...</div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <span>Auto-refreshes every <span id="interval-label">30</span>s &nbsp;|&nbsp; Data from alerts_log.json</span>
+    <span id="next-refresh-label"></span>
+  </div>
+  <!-- Key bar -->
+  <div class="key-bar" id="key-bar"></div>
+
+</div>
+<script>
+  // ── Config & state ────────────────────────────────────────────────────────
+  const JSON_PATH      = "alerts_log.json";
+  let REFRESH_SEC      = 30;
+  let refreshTimer     = null;
+  let countdownTimer   = null;
+  let nextRefresh      = null;
+  let activeFilters    = new Set(["HIGH","WATCH","PRICE","KEYWORD"]);
+  let sortCol          = "default";
+  let sortDir          = 1;
+
+  // Advanced filters
+  let advKw   = "";
+  let advPMin = "";
+  let advPMax = "";
+
+  const PRIORITY_RANK = { HIGH:0, WATCH:1, PRICE:2, KEYWORD:3 };
+
+  // ── localStorage helpers ──────────────────────────────────────────────────
+  function lsGet(k, def) { return localStorage.getItem(k) ?? def; }
+  function lsSet(k, v)   { localStorage.setItem(k, v); }
+
+  // ── Theme ─────────────────────────────────────────────────────────────────
+  function applyTheme(t) {
+    document.documentElement.className = t === "light" ? "theme-light" : "theme-dark";
+    lsSet("scanner_theme", t);
+  }
+  function toggleTheme() {
+    applyTheme(document.documentElement.className.includes("light") ? "dark" : "light");
+  }
+  applyTheme(lsGet("scanner_theme", "dark"));
+
+  // ── Priority filter toggles ───────────────────────────────────────────────
+  function toggleFilter(btn) {
+    const f = btn.dataset.filter;
+    if (activeFilters.has(f)) { activeFilters.delete(f); btn.classList.remove("active"); }
+    else                       { activeFilters.add(f);    btn.classList.add("active"); }
+    renderTable(window._lastData);
+  }
+
+  // ── Advanced filters popup ────────────────────────────────────────────────
+  function openPopup() {
+    document.getElementById("filters-popup").classList.add("open");
+    // Focus keyword input after transition paint
+    setTimeout(() => document.getElementById("adv-kw").focus(), 30);
+  }
+  function closePopup() {
+    document.getElementById("filters-popup").classList.remove("open");
+  }
+  function togglePopup(e) {
+    if (e) e.stopPropagation();  // prevent bubbling to document close-listener
+    const isOpen = document.getElementById("filters-popup").classList.contains("open");
+    if (isOpen) closePopup(); else openPopup();
+  }
+  document.addEventListener("click", e => {
+    const popup = document.getElementById("filters-popup");
+    if (!popup.contains(e.target))
+      closePopup();
+  });
+
+  function loadAdv() {
+    advKw   = lsGet("adv_kw",   "");
+    advPMin = lsGet("adv_pmin", "");
+    advPMax = lsGet("adv_pmax", "");
+    document.getElementById("adv-kw").value   = advKw;
+    document.getElementById("adv-pmin").value = advPMin;
+    document.getElementById("adv-pmax").value = advPMax;
+  }
+  function saveAdv() {
+    lsSet("adv_kw",   advKw);
+    lsSet("adv_pmin", advPMin);
+    lsSet("adv_pmax", advPMax);
+  }
+  function onAdvChange() {
+    advKw   = document.getElementById("adv-kw").value;
+    advPMin = document.getElementById("adv-pmin").value;
+    advPMax = document.getElementById("adv-pmax").value;
+    saveAdv();
+    updateAdvPills();
+    renderTable(window._lastData);
+  }
+  function clearAdv() {
+    advKw = advPMin = advPMax = "";
+    document.getElementById("adv-kw").value   = "";
+    document.getElementById("adv-pmin").value = "";
+    document.getElementById("adv-pmax").value = "";
+    saveAdv();
+    updateAdvPills();
+    renderTable(window._lastData);
+  }
+  function updateAdvPills() {
+    const parts = [];
+    if (advKw.length >= 3) parts.push({ label: `"${advKw}"`, clear: "kw"   });
+    if (advPMin)           parts.push({ label: `≥$${advPMin}`, clear: "pmin" });
+    if (advPMax)           parts.push({ label: `≤$${advPMax}`, clear: "pmax" });
+    document.getElementById("adv-indicators").innerHTML = parts.map(p =>
+      `<span class="adv-pill" onclick="clearOneAdv('${p.clear}')" title="Click to clear this filter">${p.label} ✕</span>`
+    ).join("");
+    document.getElementById("filters-btn").classList.toggle("active", parts.length > 0);
+  }
+  function clearOneAdv(which) {
+    if (which === "kw")   { advKw   = ""; document.getElementById("adv-kw").value   = ""; }
+    if (which === "pmin") { advPMin = ""; document.getElementById("adv-pmin").value = ""; }
+    if (which === "pmax") { advPMax = ""; document.getElementById("adv-pmax").value = ""; }
+    saveAdv();
+    updateAdvPills();
+    renderTable(window._lastData);
+  }
+
+  // ── Sort ──────────────────────────────────────────────────────────────────
+  // Cycle: default → asc → desc → default
+  let sortClicks = 0;
+  function setSort(col) {
+    if (sortCol !== col) {
+      sortCol = col; sortDir = 1; sortClicks = 1;
+    } else {
+      sortClicks++;
+      if (sortClicks > 2) { sortCol = "default"; sortDir = 1; sortClicks = 0; }
+      else sortDir = sortClicks === 2 ? -1 : 1;
+    }
+    renderTable(window._lastData);
+  }
+  function sortArr(col) {
+    if (sortCol !== col) return `<span class="sort-arr">⇅</span>`;
+    return `<span class="sort-arr on">${sortDir === 1 ? "▲" : "▼"}</span>`;
+  }
+  function doSort(alerts) {
+    if (sortCol === "default") return alerts;
+    return [...alerts].sort((a, b) => {
+      if (sortCol === "time") {
+        // Sort by raw timestamp string — ISO format sorts lexicographically
+        const ta = a.timestamp || ""; const tb = b.timestamp || "";
+        return sortDir * ta.localeCompare(tb);
+      }
+      if (sortCol === "ticker")   return sortDir * (a.ticker||"").localeCompare(b.ticker||"");
+      if (sortCol === "priority") return sortDir * ((PRIORITY_RANK[a.priority]??99) - (PRIORITY_RANK[b.priority]??99));
+      if (sortCol === "price")    return sortDir * ((parseFloat(a.price)||0) - (parseFloat(b.price)||0));
+      return 0;
+    });
+  }
+
+  // ── Highlight matched text ────────────────────────────────────────────────
+  function hlText(str, term) {
+    const safe = esc(str);
+    if (!term || term.length < 3) return safe;
+    const re = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"), "gi");
+    return safe.replace(re, m => `<mark>${m}</mark>`);
+  }
+
+  // ── Robinhood link ────────────────────────────────────────────────────────
+  function rhLink(ticker) {
+    const url = `https://robinhood.com/stocks/${encodeURIComponent(ticker)}`;
+    return `<a class="rh-link" href="${url}" target="_blank" rel="noopener" title="View ${ticker} on Robinhood">RH</a>`;
+  }
+
+  // ── Fetch ─────────────────────────────────────────────────────────────────
+  async function fetchAlerts() {
+    const badge = document.getElementById("refresh-badge");
+    badge.classList.add("loading");
+    try {
+      const res  = await fetch(JSON_PATH + "?t=" + Date.now());
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      window._lastData = data;
+      if (data.refresh_seconds) {
+        REFRESH_SEC = data.refresh_seconds;
+        document.getElementById("interval-label").textContent = REFRESH_SEC;
+      }
+      if (data.generated)
+        document.getElementById("generated-ts").textContent = "Last scan: " + data.generated;
+      renderTable(data);
+      renderFooterKey(data);
+    } catch(e) {
+      document.getElementById("alerts-container").innerHTML =
+        `<div class="state-msg">Could not load alerts_log.json<br><small>${e.message}</small><br><br>
+         <small>Make sure the scanner is running and this file is in the same folder as alerts.html</small></div>`;
+    } finally {
+      badge.classList.remove("loading");
+      document.getElementById("refresh-label").textContent = "Refreshed " + new Date().toLocaleTimeString();
+      scheduleNext();
+    }
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  function renderTable(data) {
+    if (!data || !data.alerts) return;
+
+    // 1. Priority filter + newest first
+    let alerts = [...data.alerts].filter(a => activeFilters.has(a.priority)).reverse();
+
+    // 2. Column sort
+    alerts = doSort(alerts);
+
+    // 3. Adv filter params
+    const kw    = advKw.trim();
+    const useKw = kw.length >= 3;
+    const pMin  = advPMin !== "" ? parseFloat(advPMin) : null;
+    const pMax  = advPMax !== "" ? parseFloat(advPMax) : null;
+
+    if (alerts.length === 0) {
+      document.getElementById("alerts-container").innerHTML =
+        `<div class="state-msg">No alerts match current filters.</div>`;
+      document.getElementById("count-label").textContent = "0 alerts";
+      return;
+    }
+
+    let visible = 0;
+    const rows = alerts.map(a => {
+      const price    = parseFloat(a.price) || 0;
+      const kwMatch  = !useKw || a.ticker.toLowerCase().includes(kw.toLowerCase())
+                               || a.headline.toLowerCase().includes(kw.toLowerCase());
+      const pMatch   = (pMin === null || price >= pMin) && (pMax === null || price <= pMax);
+      const hidden   = (kwMatch && pMatch) ? "" : "row-hidden";
+      if (kwMatch && pMatch) visible++;
+
+      const isNew    = a.is_new ? "is-new" : "";
+      const badgeTxt = { HIGH:"HIGH ★", WATCH:"WATCH", PRICE:"PRICE ↑", KEYWORD:"KEYWORD" }[a.priority] || a.priority;
+
+      // Keyword pills with highlight
+      const kwHtml = (a.keywords || [])
+        .map(k => `<span class="kw-pill">${hlText(k, kw)}</span>`).join("");
+
+      // Linked tickers with RH links
+      const linkedHtml = (a.linked_tickers || [])
+        .map(t => `<span class="linked-ticker">${esc(t)}${rhLink(t)}</span>`).join("");
+
+      // Headline — tooltip on the td (overflow:hidden on inner elements clips ::after)
+      const hlDisp = hlText(a.headline, kw);
+      const hlInner = a.url
+        ? `<a href="${esc(a.url)}" target="_blank" rel="noopener">${hlDisp}</a>`
+        : hlDisp;
+      // data-tip goes on td via a data attribute we inject into the tr td later
+      const hlTip = esc(a.headline);
+      const hlCell = hlInner;
+
+      // Time — strip trailing " ET" to save 3 chars
+      const timeStr = (a.news_time || a.timestamp || "").replace(/ ET\s*$/, "");
+
+      // Ticker — with flag button and RH link
+      const isFlagged  = flagged.has(a.id);
+      const flagCls    = isFlagged ? "flag-btn flagged" : "flag-btn";
+      const flagTitle  = isFlagged ? "Unflag" : "Flag this article";
+      const flagBtn    = a.id
+        ? `<button class="${flagCls}" onclick="toggleFlag('${esc(a.id)}',this)" title="${flagTitle}">⚑</button>`
+        : "";
+      const tickerCell = `<span data-tip="Ticker: ${esc(a.ticker)}">${hlText(a.ticker, kw)}</span>${flagBtn}${rhLink(a.ticker)}`;
+
+      const priceDisp = a.price && a.price !== "N/A" ? "$" + a.price : "N/A";
+
+      return `<tr class="${isNew} ${hidden}">
+        <td class="td-time">${esc(timeStr)}</td>
+        <td class="td-badge"><span class="badge badge-${a.priority}">${badgeTxt}</span></td>
+        <td class="td-ticker">${tickerCell}</td>
+        <td class="td-price">${priceDisp}</td>
+        <td class="td-hl" data-tip="${hlTip}">${hlCell}</td>
+        <td class="td-kw">${kwHtml}</td>
+        <td class="td-linked">${linkedHtml}</td>
+        <td class="td-src">${esc(a.source||"")}</td>
+      </tr>`;
+    }).join("");
+
+    document.getElementById("count-label").textContent =
+      visible + " alert" + (visible !== 1 ? "s" : "");
+
+    document.getElementById("alerts-container").innerHTML = `
+      <table class="alerts-table">
+        <thead><tr>
+          <th class="sortable" onclick="setSort('time')">Time ${sortArr("time")}</th>
+          <th class="sortable" onclick="setSort('priority')">Priority ${sortArr("priority")}</th>
+          <th class="sortable" onclick="setSort('ticker')">Ticker ${sortArr("ticker")}</th>
+          <th class="sortable" onclick="setSort('price')">Price ${sortArr("price")}</th>
+          <th>Headline</th>
+          <th>Keywords</th>
+          <th>Linked</th>
+          <th>Source</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  // ── Countdown ─────────────────────────────────────────────────────────────
+  function scheduleNext() {
+    clearTimeout(refreshTimer);
+    clearInterval(countdownTimer);
+    nextRefresh = Date.now() + REFRESH_SEC * 1000;
+    countdownTimer = setInterval(() => {
+      const sec = Math.max(0, Math.round((nextRefresh - Date.now()) / 1000));
+      const txt = "Next refresh in " + String(sec).padStart(2," ") + "s";
+      document.getElementById("countdown-inline").textContent   = txt;
+      document.getElementById("next-refresh-label").textContent = txt;
+    }, 1000);
+    refreshTimer = setTimeout(fetchAlerts, REFRESH_SEC * 1000);
+  }
+
+  // ── Escape ────────────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s||"")
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  // ── Footer key bar ───────────────────────────────────────────────────────
+  function renderFooterKey(data) {
+    const el = document.getElementById("key-bar");
+    if (!el) return;
+
+    // Prefer scanner_runtime (written by scanner each save) over inferring from alerts
+    const rt        = data && data.scanner_runtime ? data.scanner_runtime : null;
+    const watchList = rt ? (rt.watchlist || []) : [];
+    const kwList    = rt ? (rt.keywords  || []) : [];
+    const threshold = rt ? rt.price_threshold_dollars : null;
+
+    const watchHtml = watchList.length
+      ? watchList.map(t => `<span class="key-ticker">${esc(t)}</span>`).join("")
+      : `<span class="key-desc">none configured</span>`;
+
+    const kwHtml = kwList.length
+      ? kwList.map(k => `<span class="key-kw">${esc(k)}</span>`).join("")
+      : `<span class="key-desc">none configured</span>`;
+
+    const threshHtml = threshold !== null
+      ? `<span class="key-val">≤ $${parseFloat(threshold).toFixed(2)}</span>`
+      : `<span class="key-desc">see config.json</span>`;
+
+    el.innerHTML = `
+      <div class="key-item">
+        <span class="key-label k-high">HIGH ★</span>
+        <span class="key-desc">Price + keyword match</span>
+      </div>
+      <div class="key-item">
+        <span class="key-label k-watch">WATCH</span>
+        ${watchHtml}
+      </div>
+      <div class="key-item">
+        <span class="key-label k-price">PRICE ↑</span>
+        <span class="key-desc">Price</span> ${threshHtml}
+      </div>
+      <div class="key-item">
+        <span class="key-label k-keyword">KEYWORD</span>
+        ${kwHtml}
+      </div>`;
+  }
+
+  // ── Article flags (saved by alert id) ───────────────────────────────────
+  let flagged = new Set(JSON.parse(localStorage.getItem("flagged_alerts") || "[]"));
+  function saveFlags() {
+    localStorage.setItem("flagged_alerts", JSON.stringify([...flagged]));
+  }
+  function toggleFlag(id, btn) {
+    if (flagged.has(id)) { flagged.delete(id); btn.classList.remove("flagged"); btn.title = "Flag this article"; }
+    else                 { flagged.add(id);    btn.classList.add("flagged");    btn.title = "Unflag"; }
+    saveFlags();
+  }
+
+  // ── Boot ──────────────────────────────────────────────────────────────────
+  loadAdv();
+  updateAdvPills();
+  fetchAlerts();
+</script>
+</body>
+</html>
